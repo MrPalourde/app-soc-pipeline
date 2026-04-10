@@ -1,0 +1,40 @@
+use tokio::net::TcpListener;
+use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc::Sender;
+
+pub async fn open_server(tx: Sender<String>, ip: String, port: String) {
+    let socket = format!("{}:{}", ip, port);
+    let listener = TcpListener::bind(&socket).await.unwrap();
+    println!("Server bound to {}", socket);
+    loop {
+        let (mut socket, addr) = listener.accept().await.unwrap();
+        let tx = tx.clone();
+        println!("Client {} connected", addr.ip());
+        tokio::spawn(async move {
+            let mut buffer = vec![0; 4096];
+            let mut leftover = String::new();
+
+            // In a loop, read data from the socket and write the data back.
+            loop {
+                let n = match socket.read(&mut buffer).await {
+                    // socket closed
+                    Ok(0) => return,
+                    Ok(n) => n,
+                    Err(_) => return,
+                };
+
+                // Get each line of logs and send it to the channel
+                let chunk = String::from_utf8_lossy(&buffer[..n]);
+                leftover.push_str(&chunk);
+                while let Some(pos) = leftover.find('\n') {
+                    let line = leftover[..pos].to_string();
+                    leftover = leftover[pos + 1..].to_string();
+                    if tx.send(line).await.is_err() {
+                        return;
+                    }
+                }
+
+            }
+        });
+    }
+}
