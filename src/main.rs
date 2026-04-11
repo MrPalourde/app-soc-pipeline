@@ -32,7 +32,7 @@ async fn main() {
 
     // Get logs from server and process
     while let Some(log) = rx_server.recv().await {
-        let value = parser::parse(log).await;
-        println!("Parsed : {}", value);
+        let values = parser::parse(log).await;
+        println!("Parsed : {:?}", values);
     }
 }
