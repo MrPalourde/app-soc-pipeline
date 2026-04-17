@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use std::fs;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
+use std::sync::Arc;
+use std::collections::HashMap;
+use std::time::Instant;
 
 mod server;
 mod parser;
@@ -16,23 +20,31 @@ struct Server {
     port: u16,
 }
 
+type State = Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>>;
+
 #[tokio::main]
 async fn main() {
-    // Read and parse the TOML file
     let config_str = fs::read_to_string("config/server.toml").expect("Failed to read file");
     let config: Config = toml::from_str(&config_str).expect("Failed to parse TOML");
 
-    // Create channel [main.rs <-> server.rs]
     let (tx_server, mut rx_server) = mpsc::channel(1000);
 
-    // Launch server to start receive logs from clients
     tokio::spawn(async move {
         server::open_server(tx_server, config.server.host.to_string(), config.server.port.to_string()).await;
     });
 
-    // Get logs from server and process
+    let state: State = Arc::new(Mutex::new(HashMap::new()));
+
+    tokio::spawn(parser::watcher(state.clone()));
+
     while let Some(log) = rx_server.recv().await {
-        let values = parser::parse(log).await;
-        println!("Parsed : {:?}", values);
+        let parser_state = state.clone();
+        tokio::spawn(async move {
+            let completed = parser::parse(log, parser_state).await;
+            if !completed.is_empty() {
+                println!("Event complet ({} lignes): {:?}", completed.len(), completed);
+            }
+        });
     }
+     
 }
