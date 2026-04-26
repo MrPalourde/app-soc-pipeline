@@ -28,7 +28,7 @@ pub async fn open_server(tx: Sender<String>, ip: String, port: String) {
                 leftover.push_str(&chunk);
                 while let Some(pos) = leftover.find('\n') {
                     let raw_line = leftover[..pos].to_string();
-                    let line = format!("@{} {}", addr.ip(), raw_line);
+                    let line = format!("{} {}", addr.ip(), raw_line);
                     leftover = leftover[pos + 1..].to_string();
                     if tx.send(line).await.is_err() {
                         return;
