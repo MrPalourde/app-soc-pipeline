@@ -46,9 +46,9 @@ fn insert_in_hashmap(
 }
 
 /*
-    Function remove duplicate and put in specific order multiple audit log into one
-    @log_hash_map: A HashMap that contains all the logs in the queue
-    @return: A vector containing the regrouped logs
+    Function remove duplicate and put in specific order multiple log into one
+    @logs_in_vector: A vector containing the log(s) to regroup and/or organize
+    @return: A vector containing the regrouped and organized logs
 */
 fn organize(
     logs_in_vector: (Vec<String>, Instant)
@@ -60,7 +60,7 @@ fn organize(
 
 pub async fn watcher(
     log_hash_map: Arc<Mutex<HashMap<String,(Vec<String>, Instant)>>>
-) {
+) -> Vec<String> {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut map = log_hash_map.lock().await;
@@ -72,7 +72,7 @@ pub async fn watcher(
             .collect();
         for id in stale_ids {
             if let Some((lines, _)) = map.remove(&id) {
-                println!("Event {} flush ({} lignes)", id, lines.len());
+                return organize((lines.clone(), now));
             }
         }
     }

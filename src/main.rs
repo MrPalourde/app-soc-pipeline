@@ -35,8 +35,6 @@ async fn main() {
 
     let state: State = Arc::new(Mutex::new(HashMap::new()));
 
-    tokio::spawn(parser::watcher(state.clone()));
-
     while let Some(log) = rx_server.recv().await {
         let parser_state = state.clone();
         tokio::spawn(async move {
@@ -44,6 +42,11 @@ async fn main() {
             if !completed.is_empty() {
                 println!("Event complet ({} lignes): {:?}", completed.len(), completed);
             }
+        });
+        let watcher_state = state.clone();
+        tokio::spawn(async move {
+            let regrouped_logs: Vec<String> = parser::watcher(watcher_state).await;
+            println!("Event regroupé {:?}", regrouped_logs);
         });
     }
      
