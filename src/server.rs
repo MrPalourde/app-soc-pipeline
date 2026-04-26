@@ -1,6 +1,7 @@
 use tokio::net::TcpListener;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::Sender;
+use chrono::Utc;
 
 pub async fn open_server(tx: Sender<String>, ip: String, port: String) {
     let socket = format!("{}:{}", ip, port);
@@ -28,7 +29,8 @@ pub async fn open_server(tx: Sender<String>, ip: String, port: String) {
                 leftover.push_str(&chunk);
                 while let Some(pos) = leftover.find('\n') {
                     let raw_line = leftover[..pos].to_string();
-                    let line = format!("{} {}", addr.ip(), raw_line);
+                    let unix_time: i64 = Utc::now().timestamp();
+                    let line = format!("{} {} {}", addr.ip(), unix_time, raw_line);
                     leftover = leftover[pos + 1..].to_string();
                     if tx.send(line).await.is_err() {
                         return;
