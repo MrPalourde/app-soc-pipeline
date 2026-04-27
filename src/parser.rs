@@ -21,12 +21,11 @@ pub async fn parse(
     for log_part in log_slashed {
         log_vector.0.push(log_part.to_string());
     }
-    let mut event_id = String::from("rsyslog");
-    let log_type = log_vector.0.get(5).unwrap().as_str().to_string();
+    let log_type = log_vector.0.get(6).unwrap().as_str().to_string();
     if log_type == String::from("auditd:") {
         let regex_event_id = Regex::new(r#"msg=audit\([0-9]*.[0-9]*:([0-9]*)\)"#).unwrap();
-        event_id = regex_event_id.captures(&log).unwrap().get(1).unwrap().as_str().to_string();
-        let mut map = log_hash_map.lock().await;
+        let event_id = regex_event_id.captures(&log).unwrap().get(1).unwrap().as_str().to_string();
+        let map = log_hash_map.lock().await;
         insert_in_hashmap(&event_id, map, log_vector);
         return vec![];
     }
@@ -48,14 +47,17 @@ fn insert_in_hashmap(
 /*
     Function remove duplicate and put in specific order multiple log into one
     @logs_in_vector: A vector containing the log(s) to regroup and/or organize
-    @return: A vector containing the regrouped and organized logs
+    @return: A vector containing the regrouped and organized logs in this order :
+        IP, unix_time, hostname, origin_service, infos(list all infos terminated by an EOL)
 */
 fn organize(
     logs_in_vector: (Vec<String>, Instant)
 ) -> Vec<String> {
     let mut organized_log:Vec<String> = Vec::new();
-
-    return logs_in_vector.0;
+    organized_log.push(logs_in_vector.0[0].clone());
+    organized_log.push(logs_in_vector.0[1].clone());
+    
+    return organized_log;
 }
 
 pub async fn watcher(
