@@ -40,13 +40,13 @@ async fn main() {
         tokio::spawn(async move {
             let completed = parser::parse(log, parser_state).await;
             if !completed.is_empty() {
-                println!("Event complet ({} lignes): {:?}", completed.len(), completed);
+                println!("Event : {:?}", event_number, completed);
             }
         });
         let watcher_state = state.clone();
         tokio::spawn(async move {
             let regrouped_logs: Vec<String> = parser::watcher(watcher_state).await;
-            println!("Event regroupé {:?}", regrouped_logs);
+            println!("Event regrouped : {:?}", event_number, regrouped_logs);
         });
     }
      

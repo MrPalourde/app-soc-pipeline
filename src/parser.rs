@@ -6,6 +6,14 @@ use tokio::sync::MutexGuard;
 use std::time::Instant;
 use std::time::Duration;
 
+const IP: usize = 0;
+const TIMESTAMP: usize = 1;
+const HOSTNAME: usize = 5;
+const SERVICE: usize = 6;
+const AUDITD_TYPE: usize = 7;
+const PROCTITLE_CONTENT: usize = 9;
+const EXECVE_ARGS_START: usize = 9;
+
 /*
     Function parse return a Vector<String> of 1 or multiple logs with the same ID
     @log: Log line to parse
@@ -48,14 +56,37 @@ fn insert_in_hashmap(
     Function remove duplicate and put in specific order multiple log into one
     @logs_in_vector: A vector containing the log(s) to regroup and/or organize
     @return: A vector containing the regrouped and organized logs in this order :
-        IP, unix_time, hostname, origin_service, infos(list all infos terminated by an EOL)
+        IP, unix_time, hostname, origin_service, infos
 */
 fn organize(
     logs_in_vector: (Vec<String>, Instant)
 ) -> Vec<String> {
     let mut organized_log:Vec<String> = Vec::new();
-    organized_log.push(logs_in_vector.0[0].clone());
-    organized_log.push(logs_in_vector.0[1].clone());
+    organized_log.push(logs_in_vector.0[IP].clone());
+    organized_log.push(logs_in_vector.0[TIMESTAMP].clone());
+    organized_log.push(logs_in_vector.0[HOSTNAME].clone());
+    let service: String = logs_in_vector.0[SERVICE].clone();
+    organized_log.push(service.clone());
+    let auditd_type = logs_in_vector.0[AUDITD_TYPE].clone();
+    organized_log.push(auditd_type.clone());
+    match auditd_type.as_str() {
+        "type=PROCTITLE" => {
+            organized_log.push(logs_in_vector.0[PROCTITLE_CONTENT].clone());
+        },
+        "type=EXECVE" => {
+            let args_count: usize = logs_in_vector.0[EXECVE_ARGS_START].clone()
+                .chars().skip(5).collect::<String>().parse().unwrap();
+            let mut executed_command: String = String::new();
+            for arg in EXECVE_ARGS_START+1..=EXECVE_ARGS_START+args_count {
+                executed_command.push_str(&logs_in_vector.0[arg].clone());
+                executed_command.push(' ');
+            }
+            organized_log.push(executed_command);
+        },
+        &_ => {
+            organized_log.push("Other command".to_string());
+        }
+    }
     
     return organized_log;
 }
