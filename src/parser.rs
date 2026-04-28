@@ -27,10 +27,18 @@ pub async fn parse(
     for log_part in log_slashed {
         log_vector.0.push(log_part.to_string());
     }
-    let log_type = log_vector.0.get(6).unwrap().as_str().to_string();
+    let log_type = log_vector.0.get(6)
+        .unwrap()
+        .as_str()
+        .to_string();
     if log_type == String::from("auditd:") {
         let regex_event_id = Regex::new(r#"msg=audit\([0-9]*.[0-9]*:([0-9]*)\)"#).unwrap();
-        let event_id = regex_event_id.captures(&log).unwrap().get(1).unwrap().as_str().to_string();
+        let event_id = regex_event_id.captures(&log)
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .to_string();
         let map = log_hash_map.lock().await;
         insert_in_hashmap(&event_id, map, log_vector);
         return vec![];
@@ -72,14 +80,22 @@ fn organize(
             .filter(|(_,s)| *s == "auditd:")
             .map(|(i,_)| i)
             .collect();
+        let regex_execve_commands = Regex::new(r#"a[0-9]+=(?:")?([^\\"\s]*)"#).unwrap();
         for auditd_type_index in auditd_indices {
             match logs_in_vector.0[auditd_type_index+1].as_str() {
                 "type=PROCTITLE" => {
-                    organized_log.push(logs_in_vector.0[auditd_type_index+AUDITD_CONTENT_INDEX].clone());
+                    let mut proctitle: String = logs_in_vector.0[auditd_type_index+AUDITD_CONTENT_INDEX]
+                        .clone();
+                    proctitle = proctitle
+                        .chars()
+                        .skip(10)
+                        .collect::<String>();
+                    organized_log.push(proctitle);
                 },
                 "type=EXECVE" => {
                     let execve_index: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
-                    let args_count: usize = logs_in_vector.0[execve_index].clone()
+                    let args_count: usize = logs_in_vector.0[execve_index]
+                        .clone()
                         .chars()
                         .skip(5)
                         .collect::<String>()
@@ -87,10 +103,20 @@ fn organize(
                         .unwrap();
                     let mut executed_command: String = String::new();
                     for arg in execve_index+1..=execve_index+args_count {
-                        executed_command.push_str(&logs_in_vector.0[arg].clone());
+                        let mut current_arg: String = logs_in_vector.0[arg]
+                            .clone()
+                            .to_string()
+                            .replace('\0', " ");
+                        current_arg = regex_execve_commands.captures(&current_arg)
+                            .unwrap()
+                            .get(1)
+                            .unwrap()
+                            .as_str()
+                            .to_string();
+                        executed_command.push_str(&current_arg);
                         executed_command.push(' ');
                     }
-                    organized_log.push(executed_command);
+                    organized_log.push(executed_command.trim().to_string());
                 },
                 &_ => {
                     organized_log.push("Other command".to_string());
