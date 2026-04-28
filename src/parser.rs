@@ -10,9 +10,7 @@ const IP: usize = 0;
 const TIMESTAMP: usize = 1;
 const HOSTNAME: usize = 5;
 const SERVICE: usize = 6;
-const AUDITD_TYPE: usize = 7;
-const PROCTITLE_CONTENT: usize = 9;
-const EXECVE_ARGS_START: usize = 9;
+const AUDITD_CONTENT_INDEX: usize = 3;
 
 /*
     Function parse return a Vector<String> of 1 or multiple logs with the same ID
@@ -67,27 +65,39 @@ fn organize(
     organized_log.push(logs_in_vector.0[HOSTNAME].clone());
     let service: String = logs_in_vector.0[SERVICE].clone();
     organized_log.push(service.clone());
-    let auditd_type = logs_in_vector.0[AUDITD_TYPE].clone();
-    organized_log.push(auditd_type.clone());
-    match auditd_type.as_str() {
-        "type=PROCTITLE" => {
-            organized_log.push(logs_in_vector.0[PROCTITLE_CONTENT].clone());
-        },
-        "type=EXECVE" => {
-            let args_count: usize = logs_in_vector.0[EXECVE_ARGS_START].clone()
-                .chars().skip(5).collect::<String>().parse().unwrap();
-            let mut executed_command: String = String::new();
-            for arg in EXECVE_ARGS_START+1..=EXECVE_ARGS_START+args_count {
-                executed_command.push_str(&logs_in_vector.0[arg].clone());
-                executed_command.push(' ');
+    if service == "auditd:".to_string() {
+        let auditd_indices: Vec<usize> = logs_in_vector.0
+            .iter()
+            .enumerate()
+            .filter(|(_,s)| *s == "auditd:")
+            .map(|(i,_)| i)
+            .collect();
+        for auditd_type_index in auditd_indices {
+            match logs_in_vector.0[auditd_type_index+1].as_str() {
+                "type=PROCTITLE" => {
+                    organized_log.push(logs_in_vector.0[auditd_type_index+AUDITD_CONTENT_INDEX].clone());
+                },
+                "type=EXECVE" => {
+                    let execve_index: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
+                    let args_count: usize = logs_in_vector.0[execve_index].clone()
+                        .chars()
+                        .skip(5)
+                        .collect::<String>()
+                        .parse()
+                        .unwrap();
+                    let mut executed_command: String = String::new();
+                    for arg in execve_index+1..=execve_index+args_count {
+                        executed_command.push_str(&logs_in_vector.0[arg].clone());
+                        executed_command.push(' ');
+                    }
+                    organized_log.push(executed_command);
+                },
+                &_ => {
+                    organized_log.push("Other command".to_string());
+                }
             }
-            organized_log.push(executed_command);
-        },
-        &_ => {
-            organized_log.push("Other command".to_string());
         }
     }
-    
     return organized_log;
 }
 
