@@ -24,6 +24,7 @@ pub async fn parse(
     log: String,
     log_hash_map: Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>>
 ) -> Vec<String> {
+    println!("{:?}", log);
     let mut log_vector:(Vec<String>, Instant) = (Vec::new(), Instant::now());
     let log_slashed: Vec<_> = log.split_whitespace().collect();
     for log_part in log_slashed {
@@ -174,4 +175,121 @@ pub async fn watcher(
             }
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use std::time::Instant;
+
+    fn make_map() -> Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>> {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+    
+    // -------------------------------------------------------------------------
+    // parse()
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_parse_auditd_log_returns_empty() {
+        let map = make_map();
+        let log = "192.168.1.60 1777474222 <174>Apr 29 16:50:22 raspberrypi auditd: type=SYSCALL msg=audit(1777474222.322:1408665): arch=c00000b7 syscall=221 success=yes exit=0 a0=400046fd10 a1=400020fc80 a2=4000302460 a3=0 items=2 ppid=1530 pid=15232 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"runc\" exe=\"/usr/bin/runc\" key=\"user-commands\"\u{1d}ARCH=aarch64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"".to_string();
+        let result = parse(log, map).await;
+
+        assert_eq!(result, vec![] as Vec<String>);
+    }
+
+    #[tokio::test]
+    async fn test_parse_non_auditd_log_returns_organized() {
+        let map = make_map();
+        let log = "192.168.1.60 1777474221 <30>Apr 29 16:50:21 raspberrypi systemd[1]: Started rsyslog.service - System Logging Service.".to_string();
+        let result = parse(log, map).await;
+
+        assert_eq!(result, vec!["192.168.1.60", "1777474221", "raspberrypi", "systemd[1]:"]);
+    }
+
+    // -------------------------------------------------------------------------
+    // insert_in_hashmap()
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_insert_in_hashmap_new_entry() {
+        let map = make_map();
+        let event_id = "42".to_string();
+        let log_vector = (
+            vec!["token1".to_string(), "token2".to_string()],
+            Instant::now(),
+        );
+
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, log_vector);
+        }
+
+        let locked = map.lock().await;
+        assert!(locked.contains_key("42"));
+        assert_eq!(locked.get("42").unwrap().0, vec!["token1", "token2"]);
+    }
+
+    #[tokio::test]
+    async fn test_insert_in_hashmap_accumulates_lines() {
+        let map = make_map();
+        let event_id = "42".to_string();
+
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, (vec!["token1".to_string()], Instant::now()));
+        }
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, (vec!["token2".to_string()], Instant::now()));
+        }
+
+        let locked = map.lock().await;
+        assert_eq!(locked.get("42").unwrap().0, vec!["token1", "token2"]);
+    }
+
+    #[tokio::test]
+    async fn test_insert_in_hashmap_updates_timestamp() {
+        let map = make_map();
+        let event_id = "42".to_string();
+
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, (vec!["token1".to_string()], Instant::now()));
+        }
+        let t1 = map.lock().await.get("42").unwrap().1;
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, (vec!["token2".to_string()], Instant::now()));
+        }
+        let t2 = map.lock().await.get("42").unwrap().1;
+
+        assert!(t2 > t1);
+    }
+
+    #[tokio::test]
+    async fn test_insert_in_hashmap_different_ids_are_separate() {
+        let map = make_map();
+
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&"1".to_string(), guard, (vec!["a".to_string()], Instant::now()));
+        }
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&"2".to_string(), guard, (vec!["b".to_string()], Instant::now()));
+        }
+
+        let locked = map.lock().await;
+        assert_eq!(locked.get("1").unwrap().0, vec!["a"]);
+        assert_eq!(locked.get("2").unwrap().0, vec!["b"]);
+    }
+
 }
