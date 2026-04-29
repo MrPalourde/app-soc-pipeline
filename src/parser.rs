@@ -11,6 +11,8 @@ const TIMESTAMP: usize = 1;
 const HOSTNAME: usize = 5;
 const SERVICE: usize = 6;
 const AUDITD_CONTENT_INDEX: usize = 3;
+const PATH_PERMISSIONS_INDEX: usize = 4;
+const PATH_OWNER_INDEX: usize = 14;
 
 /*
     Function parse return a Vector<String> of 1 or multiple logs with the same ID
@@ -118,8 +120,35 @@ fn organize(
                     }
                     organized_log.push(executed_command.trim().to_string());
                 },
+                "type=PATH" => {
+                    let path_start: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
+                    let is_loader: bool = logs_in_vector.0[path_start]
+                        .clone()
+                        .as_str()[5..] != "0".to_string();
+                    let mut filename: String = logs_in_vector.0[path_start + 1].clone();
+                    filename = filename[6..filename.len() - 1].to_string();
+                    if is_loader {
+                        organized_log.push(filename);
+                    } else {
+                        organized_log.push(filename);
+                        let mut permissions: String = logs_in_vector.0[path_start + PATH_PERMISSIONS_INDEX].clone();
+                        permissions = (&permissions[5..]).to_string();
+                        let mut owner: String = logs_in_vector.0[path_start + PATH_OWNER_INDEX].clone();
+                        owner = owner[6..owner.len() - 1].to_string();
+                        organized_log.push(permissions);
+                        organized_log.push(owner);
+                    }
+                },
+                "type=CWD" => {
+                    let mut cwd: String = logs_in_vector.0[auditd_type_index + AUDITD_CONTENT_INDEX].clone();
+                    cwd = (&cwd[5..6]).to_string();
+                    organized_log.push(cwd);
+                },
+                "type=SYSCALL" => { 
+                    continue;
+                },
                 &_ => {
-                    organized_log.push("Other command".to_string());
+                    continue;
                 }
             }
         }
