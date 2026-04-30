@@ -7,6 +7,7 @@ use std::time::Instant;
 use std::time::Duration;
 use serde_json::{json, Value};
 
+
 const IP: usize = 0;
 const TIMESTAMP: usize = 1;
 const HOSTNAME: usize = 5;
@@ -24,7 +25,7 @@ const PATH_OWNER_INDEX: usize = 14;
 pub async fn parse(
     log: String,
     log_hash_map: Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>>
-) -> Value {
+) {
     let mut log_vector:(Vec<String>, Instant) = (Vec::new(), Instant::now());
     let log_slashed: Vec<_> = log.split_whitespace().collect();
     for log_part in log_slashed {
@@ -34,6 +35,7 @@ pub async fn parse(
         .unwrap()
         .as_str()
         .to_string();
+    let map = log_hash_map.lock().await;
     if log_type == String::from("auditd:") {
         let regex_event_id = Regex::new(r#"msg=audit\([0-9]*.[0-9]*:([0-9]*)\)"#).unwrap();
         let event_id = regex_event_id.captures(&log)
@@ -42,11 +44,11 @@ pub async fn parse(
             .unwrap()
             .as_str()
             .to_string();
-        let map = log_hash_map.lock().await;
         insert_in_hashmap(&event_id, map, log_vector);
-        return json!({});
+    } else {
+        let id: u128 = fastrand::u128(..);
+        insert_in_hashmap(&id.to_string(), map, log_vector);
     }
-    return organize(log_vector);
 }
 
 fn insert_in_hashmap(
@@ -185,8 +187,9 @@ fn organize(
 }
 
 pub async fn watcher(
-    log_hash_map: Arc<Mutex<HashMap<String,(Vec<String>, Instant)>>>
-) -> Value {
+    log_hash_map: Arc<Mutex<HashMap<String,(Vec<String>, Instant)>>>,
+    tx: tokio::sync::mpsc::Sender<Value>
+) {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut map = log_hash_map.lock().await;
@@ -198,7 +201,7 @@ pub async fn watcher(
             .collect();
         for id in stale_ids {
             if let Some((lines, _)) = map.remove(&id) {
-                return organize((lines.clone(), now));
+                let _ = tx.send(organize((lines, now))).await;
             }
         }
     }
