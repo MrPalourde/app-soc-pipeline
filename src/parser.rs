@@ -123,6 +123,15 @@ fn organize(
                         executed_command.push_str(&current_arg);
                         executed_command.push(' ');
                     }
+                    let mut exe_name: String = data["infos"]["execve_args"][0].to_string();
+                    exe_name = exe_name
+                        .as_str()
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&exe_name)
+                        .to_string();
+                    exe_name = exe_name.as_str()[0..exe_name.len()-1].to_string();
+                    data["exe"] = json!(exe_name);
                     data["infos"]["execve_command"] = json!(executed_command.trim().to_string());
                 },
                 "type=PATH" => {
@@ -151,6 +160,20 @@ fn organize(
                 },
                 "type=SYSCALL" => { 
                     continue;
+                    /*
+                    data["syscall"]["who"]["euid"];
+                    data["syscall"]["who"]["auid"];
+
+                    data["syscall"]["what"]["syscall"];
+                    data["syscall"]["what"]["pid"];
+                    data["syscall"]["what"]["ppid"];
+
+                    data["syscall"]["result"]["success"];
+                    data["syscall"]["result"]["exit"];
+                    
+                    data["syscall"]["context"]["tty"];
+                    data["syscall"]["context"]["session"];
+                    */
                 },
                 &_ => {
                     continue;
