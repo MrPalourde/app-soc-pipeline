@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::MutexGuard;
 use std::time::Instant;
 use std::time::Duration;
+use serde_json::{json, Value};
 
 const IP: usize = 0;
 const TIMESTAMP: usize = 1;
@@ -23,8 +24,7 @@ const PATH_OWNER_INDEX: usize = 14;
 pub async fn parse(
     log: String,
     log_hash_map: Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>>
-) -> Vec<String> {
-    println!("{:?}", log);
+) -> Value {
     let mut log_vector:(Vec<String>, Instant) = (Vec::new(), Instant::now());
     let log_slashed: Vec<_> = log.split_whitespace().collect();
     for log_part in log_slashed {
@@ -44,7 +44,7 @@ pub async fn parse(
             .to_string();
         let map = log_hash_map.lock().await;
         insert_in_hashmap(&event_id, map, log_vector);
-        return vec![];
+        return json!({});
     }
     return organize(log_vector);
 }
@@ -69,13 +69,13 @@ fn insert_in_hashmap(
 */
 fn organize(
     logs_in_vector: (Vec<String>, Instant)
-) -> Vec<String> {
-    let mut organized_log:Vec<String> = Vec::new();
-    organized_log.push(logs_in_vector.0[IP].clone());
-    organized_log.push(logs_in_vector.0[TIMESTAMP].clone());
-    organized_log.push(logs_in_vector.0[HOSTNAME].clone());
+) -> Value {
+    let mut data: Value = serde_json::from_str(include_str!("../assets/data_template.json")).unwrap();
+    data["ip"] = json!(logs_in_vector.0[IP].clone());
+    data["timestamp"] = json!(logs_in_vector.0[TIMESTAMP].clone());
+    data["hostname"] = json!(logs_in_vector.0[HOSTNAME].clone());
     let service: String = logs_in_vector.0[SERVICE].clone();
-    organized_log.push(service.clone());
+    data["service"] = json!(service.clone());
     if service == "auditd:".to_string() {
         let auditd_indices: Vec<usize> = logs_in_vector.0
             .iter()
@@ -93,7 +93,7 @@ fn organize(
                         .chars()
                         .skip(10)
                         .collect::<String>();
-                    organized_log.push(proctitle);
+                    data["infos"]["proctitle"] = json!(proctitle);
                 },
                 "type=EXECVE" => {
                     let execve_index: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
@@ -116,10 +116,14 @@ fn organize(
                             .unwrap()
                             .as_str()
                             .to_string();
+                        data["infos"]["execve_args"]
+                            .as_array_mut()
+                            .unwrap()
+                            .push(json!(current_arg.clone().to_string()));
                         executed_command.push_str(&current_arg);
                         executed_command.push(' ');
                     }
-                    organized_log.push(executed_command.trim().to_string());
+                    data["infos"]["execve_command"] = json!(executed_command.trim().to_string());
                 },
                 "type=PATH" => {
                     let path_start: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
@@ -129,21 +133,21 @@ fn organize(
                     let mut filename: String = logs_in_vector.0[path_start + 1].clone();
                     filename = filename[6..filename.len() - 1].to_string();
                     if is_loader {
-                        organized_log.push(filename);
+                        data["infos"]["path"]["loader"] = json!(filename);
                     } else {
-                        organized_log.push(filename);
+                        data["infos"]["path"]["binary"] = json!(filename);
                         let mut permissions: String = logs_in_vector.0[path_start + PATH_PERMISSIONS_INDEX].clone();
                         permissions = (&permissions[5..]).to_string();
                         let mut owner: String = logs_in_vector.0[path_start + PATH_OWNER_INDEX].clone();
                         owner = owner[6..owner.len() - 1].to_string();
-                        organized_log.push(permissions);
-                        organized_log.push(owner);
+                        data["infos"]["path"]["owner"] = json!(owner);
+                        data["infos"]["path"]["permissions"] = json!(permissions);
                     }
                 },
                 "type=CWD" => {
                     let mut cwd: String = logs_in_vector.0[auditd_type_index + AUDITD_CONTENT_INDEX].clone();
                     cwd = (&cwd[5..6]).to_string();
-                    organized_log.push(cwd);
+                    data["cwd"] = json!(cwd);
                 },
                 "type=SYSCALL" => { 
                     continue;
@@ -154,12 +158,12 @@ fn organize(
             }
         }
     }
-    return organized_log;
+    return data;
 }
 
 pub async fn watcher(
     log_hash_map: Arc<Mutex<HashMap<String,(Vec<String>, Instant)>>>
-) -> Vec<String> {
+) -> Value {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut map = log_hash_map.lock().await;

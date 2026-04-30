@@ -1,0 +1,40 @@
+{
+  "ip": "",
+  "timestamp": -1,
+  "hostname": "",
+  "service": "",
+  "cwd": "",
+  "exe": "",
+  "severity": -1,
+  "infos": {
+    "syscall": {
+      "who": {
+        "uid": "",
+        "euid": "",
+        "auid": ""
+      },
+      "what": {
+        "syscall": "",
+        "pid": "",
+        "ppid": ""
+      },
+      "result": {
+        "success": "",
+        "exit": ""
+      },
+      "context": {
+        "tty": "",
+        "session": ""
+      }
+    },
+    "proctitle": "",
+    "execve_args": [],
+    "execve_command": "",
+    "path": {
+      "binary": "",
+      "loader": "",
+      "owner": "",
+      "permissions": ""
+    }
+  }
+}

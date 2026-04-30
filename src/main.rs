@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Instant;
+use serde_json::Value;
 
 mod server;
 mod parser;
@@ -38,16 +39,22 @@ async fn main() {
     while let Some(log) = rx_server.recv().await {
         let parser_state = state.clone();
         tokio::spawn(async move {
-            let completed = parser::parse(log, parser_state).await;
-            if !completed.is_empty() {
+            let completed: Value = parser::parse(log, parser_state).await.into();
+            if !is_empty(&completed) {
                 println!("Event : {:?}", completed);
             }
         });
         let watcher_state = state.clone();
         tokio::spawn(async move {
-            let regrouped_logs: Vec<String> = parser::watcher(watcher_state).await;
+            let regrouped_logs: Value = parser::watcher(watcher_state).await.into();
             println!("Event regrouped : {:?}", regrouped_logs);
         });
     }
      
+}
+
+fn is_empty(v: &serde_json::Value) -> bool {
+    v.as_object()
+        .map(|o| o.is_empty())
+        .unwrap_or(false)
 }
