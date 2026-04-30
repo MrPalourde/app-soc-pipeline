@@ -203,7 +203,7 @@ mod tests {
         let log = "192.168.1.60 1777474222 <174>Apr 29 16:50:22 raspberrypi auditd: type=SYSCALL msg=audit(1777474222.322:1408665): arch=c00000b7 syscall=221 success=yes exit=0 a0=400046fd10 a1=400020fc80 a2=4000302460 a3=0 items=2 ppid=1530 pid=15232 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"runc\" exe=\"/usr/bin/runc\" key=\"user-commands\"\u{1d}ARCH=aarch64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"".to_string();
         let result = parse(log, map).await;
 
-        assert_eq!(result, vec![] as Vec<String>);
+        assert_eq!(result, json!({}));
     }
 
     #[tokio::test]
@@ -212,7 +212,13 @@ mod tests {
         let log = "192.168.1.60 1777474221 <30>Apr 29 16:50:21 raspberrypi systemd[1]: Started rsyslog.service - System Logging Service.".to_string();
         let result = parse(log, map).await;
 
-        assert_eq!(result, vec!["192.168.1.60", "1777474221", "raspberrypi", "systemd[1]:"]);
+        assert!(result.is_object());
+        let obj = result.as_object().unwrap();
+
+        assert_eq!(obj["ip"], "192.168.1.60");
+        assert_eq!(obj["timestamp"], "1777474221");
+        assert_eq!(obj["hostname"], "raspberrypi");
+        assert_eq!(obj["service"], "systemd[1]:")
     }
 
     // -------------------------------------------------------------------------
