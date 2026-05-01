@@ -218,33 +218,37 @@ mod tests {
     fn make_map() -> Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>> {
         Arc::new(Mutex::new(HashMap::new()))
     }
-    
+
     // -------------------------------------------------------------------------
     // parse()
     // -------------------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_parse_auditd_log_returns_empty() {
+    async fn test_parse_auditd_log_inserted_in_map() {
         let map = make_map();
         let log = "192.168.1.60 1777474222 <174>Apr 29 16:50:22 raspberrypi auditd: type=SYSCALL msg=audit(1777474222.322:1408665): arch=c00000b7 syscall=221 success=yes exit=0 a0=400046fd10 a1=400020fc80 a2=4000302460 a3=0 items=2 ppid=1530 pid=15232 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"runc\" exe=\"/usr/bin/runc\" key=\"user-commands\"\u{1d}ARCH=aarch64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"".to_string();
-        let result = parse(log, map).await;
+        
+        parse(log, map.clone()).await;
 
-        assert_eq!(result, json!({}));
+        let locked = map.lock().await;
+        assert!(locked.contains_key("1408665"));
+        assert_eq!(locked.get("1408665").unwrap().0[0], "192.168.1.60");
     }
 
     #[tokio::test]
-    async fn test_parse_non_auditd_log_returns_organized() {
+    async fn test_parse_non_auditd_log_inserted_in_map() {
         let map = make_map();
         let log = "192.168.1.60 1777474221 <30>Apr 29 16:50:21 raspberrypi systemd[1]: Started rsyslog.service - System Logging Service.".to_string();
-        let result = parse(log, map).await;
+        
+        parse(log, map.clone()).await;
 
-        assert!(result.is_object());
-        let obj = result.as_object().unwrap();
-
-        assert_eq!(obj["ip"], "192.168.1.60");
-        assert_eq!(obj["timestamp"], "1777474221");
-        assert_eq!(obj["hostname"], "raspberrypi");
-        assert_eq!(obj["service"], "systemd[1]:")
+        let locked = map.lock().await;
+        assert_eq!(locked.len(), 1);
+        let entry = locked.values().next().unwrap();
+        assert_eq!(entry.0[0], "192.168.1.60");
+        assert_eq!(entry.0[1], "1777474221");
+        assert_eq!(entry.0[5], "raspberrypi");
+        assert_eq!(entry.0[6], "systemd[1]:");
     }
 
     // -------------------------------------------------------------------------
@@ -327,5 +331,4 @@ mod tests {
         assert_eq!(locked.get("1").unwrap().0, vec!["a"]);
         assert_eq!(locked.get("2").unwrap().0, vec!["b"]);
     }
-
 }
