@@ -74,7 +74,8 @@ fn organize(
 ) -> Value {
     let mut data: Value = serde_json::from_str(include_str!("../assets/data_template.json")).unwrap();
     data["ip"] = json!(logs_in_vector.0[IP].clone());
-    data["timestamp"] = json!(logs_in_vector.0[TIMESTAMP].clone());
+    let timestamp: u64 = logs_in_vector.0[TIMESTAMP].clone().parse().unwrap();
+    data["timestamp"] = json!(&timestamp);
     data["hostname"] = json!(logs_in_vector.0[HOSTNAME].clone());
     let service: String = logs_in_vector.0[SERVICE].clone();
     data["service"] = json!(service.clone());
