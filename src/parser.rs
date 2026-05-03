@@ -1,6 +1,7 @@
 use regex::Regex;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 use std::time::Instant;
@@ -214,13 +215,15 @@ pub async fn watcher(
 ) {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
-        let mut map = log_hash_map.lock().await;
         let now = Instant::now();
+        
+        let mut map = log_hash_map.lock().await;
         let stale_ids: Vec<String> = map
             .iter()
-            .filter(|(_, (_, last_seen))| now.duration_since(*last_seen).as_secs_f32() >= 2.0)
+            .filter(|(_, (_, last_seen))| now.duration_since(*last_seen) >= Duration::from_secs(2))
             .map(|(id, _)| id.clone())
             .collect();
+
         for id in stale_ids {
             if let Some((lines, _)) = map.remove(&id) {
                 let _ = tx.send(organize((lines, now))).await;
@@ -353,4 +356,31 @@ mod tests {
         assert_eq!(locked.get("1").unwrap().0, vec!["a"]);
         assert_eq!(locked.get("2").unwrap().0, vec!["b"]);
     }
+    
+    // -------------------------------------------------------------------------
+    // watcher()
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_watcher_remove_log_after_2s() {
+        let map = make_map();
+        let (tx, _rx) = mpsc::channel::<Log>(10);
+        let event_id = "50".to_string();
+        {
+            let guard = map.lock().await;
+            insert_in_hashmap(&event_id, guard, (vec!["token1".to_string()], Instant::now()));
+        }
+        tokio::spawn(watcher(map.clone(), tx));
+        tokio::time::sleep(Duration::from_millis(2500)).await;
+        let locked = map.lock().await;
+        assert!(locked.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // organize()
+    // -------------------------------------------------------------------------
+
+
+
+
 }
