@@ -5,8 +5,7 @@ use std::sync::Arc;
 use tokio::sync::MutexGuard;
 use std::time::Instant;
 use std::time::Duration;
-use serde_json::{json, Value};
-
+use crate::types::{AuditdExecutionLog, AuditdLogType, ServiceLogType, Log};
 
 const IP: usize = 0;
 const TIMESTAMP: usize = 1;
@@ -71,36 +70,64 @@ fn insert_in_hashmap(
 */
 fn organize(
     logs_in_vector: (Vec<String>, Instant)
-) -> Value {
-    let mut data: Value = serde_json::from_str(include_str!("../assets/data_template.json")).unwrap();
-    data["ip"] = json!(logs_in_vector.0[IP].clone());
-    let timestamp: u64 = logs_in_vector.0[TIMESTAMP].clone().parse().unwrap();
-    data["timestamp"] = json!(&timestamp);
-    data["hostname"] = json!(logs_in_vector.0[HOSTNAME].clone());
-    let service: String = logs_in_vector.0[SERVICE].clone();
-    data["service"] = json!(service.clone());
-    if service == "auditd:".to_string() {
-        let auditd_indices: Vec<usize> = logs_in_vector.0
-            .iter()
-            .enumerate()
-            .filter(|(_,s)| *s == "auditd:")
-            .map(|(i,_)| i)
-            .collect();
-        let regex_execve_commands = Regex::new(r#"a[0-9]+=(?:")?([^\\"\s]*)"#).unwrap();
+) -> Log {
+    let log_ip: String = logs_in_vector.0[IP].clone();
+    let log_timestamp: i32 = logs_in_vector.0[TIMESTAMP].clone().parse().unwrap();
+    let log_hostname: String = logs_in_vector.0[HOSTNAME].clone();
+    let log_service: String = logs_in_vector.0[SERVICE].clone();
+
+    let log_content: ServiceLogType = {
+        match log_service.as_str() {
+            "auditd:" => {
+                auditd_log_organize(logs_in_vector.0).into()
+            },
+            _ => {
+                ServiceLogType::NotSupported(())
+            }
+        }
+    };
+
+    Log {
+        ip: log_ip,
+        timestamp: log_timestamp,
+        hostname: log_hostname,
+        service: log_service,
+        content: log_content,
+    }
+}
+
+fn auditd_log_organize(logs_in_vector: Vec<String>) -> AuditdLogType {
+    let auditd_indices: Vec<usize> = logs_in_vector
+        .iter()
+        .enumerate()
+        .filter(|(_,s)| *s == "auditd:")
+        .map(|(i,_)| i)
+        .collect();
+    let regex_execve_commands = Regex::new(r#"a[0-9]+=(?:")?([^\\"\s]*)"#).unwrap();
+
+    let is_execution_log: bool = logs_in_vector
+        .iter()
+        .any(|log| log.as_str().contains("type=EXECVE"));
+   
+    let mut auditd: Option<AuditdLogType> = None;
+
+    if is_execution_log {
+        let mut auditd_exec = AuditdExecutionLog::default();
+
         for auditd_type_index in auditd_indices {
-            match logs_in_vector.0[auditd_type_index+1].as_str() {
+            match logs_in_vector[auditd_type_index+1].as_str() {
                 "type=PROCTITLE" => {
-                    let mut proctitle: String = logs_in_vector.0[auditd_type_index+AUDITD_CONTENT_INDEX]
+                    let mut proctitle: String = logs_in_vector[auditd_type_index+AUDITD_CONTENT_INDEX]
                         .clone();
                     proctitle = proctitle
                         .chars()
                         .skip(10)
                         .collect::<String>();
-                    data["infos"]["proctitle"] = json!(proctitle);
+                    auditd_exec.proctitle = proctitle;
                 },
                 "type=EXECVE" => {
                     let execve_index: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
-                    let args_count: usize = logs_in_vector.0[execve_index]
+                    let args_count: usize = logs_in_vector[execve_index]
                         .clone()
                         .chars()
                         .skip(5)
@@ -108,8 +135,9 @@ fn organize(
                         .parse()
                         .unwrap();
                     let mut executed_command: String = String::new();
+                    let mut args: Vec<String> = vec![];
                     for arg in execve_index+1..=execve_index+args_count {
-                        let mut current_arg: String = logs_in_vector.0[arg]
+                        let mut current_arg: String = logs_in_vector[arg]
                             .clone()
                             .to_string()
                             .replace('\0', " ");
@@ -119,14 +147,11 @@ fn organize(
                             .unwrap()
                             .as_str()
                             .to_string();
-                        data["infos"]["execve_args"]
-                            .as_array_mut()
-                            .unwrap()
-                            .push(json!(current_arg.clone().to_string()));
+                        args.push(current_arg.clone().to_string());
                         executed_command.push_str(&current_arg);
                         executed_command.push(' ');
                     }
-                    let mut exe_name: String = data["infos"]["execve_args"][0].to_string();
+                    let mut exe_name: String = args[0].to_string();
                     exe_name = exe_name
                         .as_str()
                         .rsplit('/')
@@ -134,62 +159,58 @@ fn organize(
                         .unwrap_or(&exe_name)
                         .to_string();
                     exe_name = exe_name.as_str()[0..exe_name.len()-1].to_string();
-                    data["exe"] = json!(exe_name);
-                    data["infos"]["execve_command"] = json!(executed_command.trim().to_string());
+                    auditd_exec.exe = exe_name;
+                    auditd_exec.command = executed_command.trim().to_string();
+                    auditd_exec.args = args.into();
                 },
                 "type=PATH" => {
                     let path_start: usize = auditd_type_index + AUDITD_CONTENT_INDEX;
-                    let is_loader: bool = logs_in_vector.0[path_start]
+                    let is_loader: bool = logs_in_vector[path_start]
                         .clone()
                         .as_str()[5..] != "0".to_string();
-                    let mut filename: String = logs_in_vector.0[path_start + 1].clone();
+                    let mut filename: String = logs_in_vector[path_start + 1].clone();
                     filename = filename[6..filename.len() - 1].to_string();
                     if is_loader {
-                        data["infos"]["path"]["loader"] = json!(filename);
+                        auditd_exec.loader = filename;
                     } else {
-                        data["infos"]["path"]["binary"] = json!(filename);
-                        let mut permissions: String = logs_in_vector.0[path_start + PATH_PERMISSIONS_INDEX].clone();
+                        auditd_exec.binary = filename;
+                        let mut permissions: String = logs_in_vector[path_start + PATH_PERMISSIONS_INDEX].clone();
                         permissions = (&permissions[5..]).to_string();
-                        let mut owner: String = logs_in_vector.0[path_start + PATH_OWNER_INDEX].clone();
+                        let mut owner: String = logs_in_vector[path_start + PATH_OWNER_INDEX].clone();
                         owner = owner[6..owner.len() - 1].to_string();
-                        data["infos"]["path"]["owner"] = json!(owner);
-                        data["infos"]["path"]["permissions"] = json!(permissions);
+                        auditd_exec.owner = owner;
+                        auditd_exec.permissions = permissions;
                     }
                 },
                 "type=CWD" => {
-                    let mut cwd: String = logs_in_vector.0[auditd_type_index + AUDITD_CONTENT_INDEX].clone();
+                    let mut cwd: String = logs_in_vector[auditd_type_index + AUDITD_CONTENT_INDEX].clone();
                     cwd = (&cwd[5..6]).to_string();
-                    data["cwd"] = json!(cwd);
+                    auditd_exec.cwd = cwd;
                 },
                 "type=SYSCALL" => { 
                     continue;
-                    /*
-                    data["syscall"]["who"]["euid"];
-                    data["syscall"]["who"]["auid"];
-
-                    data["syscall"]["what"]["syscall"];
-                    data["syscall"]["what"]["pid"];
-                    data["syscall"]["what"]["ppid"];
-
-                    data["syscall"]["result"]["success"];
-                    data["syscall"]["result"]["exit"];
-                    
-                    data["syscall"]["context"]["tty"];
-                    data["syscall"]["context"]["session"];
-                    */
                 },
                 &_ => {
                     continue;
                 }
             }
         }
+        auditd = Some(AuditdLogType::Execution(auditd_exec));
     }
-    return data;
+    match auditd {
+        Some(auditd) => {
+            return auditd;
+        },
+        None => {
+            eprintln!("Auditd log type not supported or error with the organizing process !");
+            AuditdLogType::Execution(AuditdExecutionLog::default())
+        },
+    }
 }
 
 pub async fn watcher(
     log_hash_map: Arc<Mutex<HashMap<String,(Vec<String>, Instant)>>>,
-    tx: tokio::sync::mpsc::Sender<Value>
+    tx: tokio::sync::mpsc::Sender<Log>
 ) {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
