@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct AuditdExecutionLog {
     pub cwd: String,
     pub exe: String,
@@ -15,10 +15,12 @@ pub struct AuditdExecutionLog {
     pub uid: String,
 }
 
+#[derive(PartialEq)]
 pub enum AuditdLogType {
     Execution(AuditdExecutionLog),
 }
 
+#[derive(PartialEq)]
 pub enum ServiceLogType {
     Auditd(AuditdLogType),
     NotSupported(()),

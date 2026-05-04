@@ -1,7 +1,6 @@
 use regex::Regex;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc;
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 use std::time::Instant;
@@ -80,7 +79,12 @@ fn organize(
     let log_content: ServiceLogType = {
         match log_service.as_str() {
             "auditd:" => {
-                auditd_log_organize(logs_in_vector.0).into()
+                let result: Option<AuditdLogType> = auditd_log_organize(logs_in_vector.0);
+                if result.is_some() {
+                    result.unwrap().into()
+                } else {
+                    ServiceLogType::NotSupported(())
+                }
             },
             _ => {
                 ServiceLogType::NotSupported(())
@@ -97,7 +101,7 @@ fn organize(
     }
 }
 
-fn auditd_log_organize(logs_in_vector: Vec<String>) -> AuditdLogType {
+fn auditd_log_organize(logs_in_vector: Vec<String>) -> Option<AuditdLogType> {
     let auditd_indices: Vec<usize> = logs_in_vector
         .iter()
         .enumerate()
@@ -159,7 +163,7 @@ fn auditd_log_organize(logs_in_vector: Vec<String>) -> AuditdLogType {
                         .next()
                         .unwrap_or(&exe_name)
                         .to_string();
-                    exe_name = exe_name.as_str()[0..exe_name.len()-1].to_string();
+                    exe_name = exe_name.as_str()[0..exe_name.len()].to_string();
                     auditd_exec.exe = exe_name;
                     auditd_exec.command = executed_command.trim().to_string();
                     auditd_exec.args = args.into();
@@ -189,7 +193,25 @@ fn auditd_log_organize(logs_in_vector: Vec<String>) -> AuditdLogType {
                     auditd_exec.cwd = cwd;
                 },
                 "type=SYSCALL" => { 
-                    continue;
+                    let is_success_option: Option<&str> = logs_in_vector
+                        .iter()
+                        .find(|f| f.starts_with("success="))
+                        .map(|f| &f[8..]);
+                    let mut is_success: bool = false;
+                    if Some(is_success_option).is_some() {
+                        is_success = true;
+                    }
+                    auditd_exec.success = is_success;
+                    
+                    let uid_option: Option<&str> = logs_in_vector
+                        .iter()
+                        .find(|f| f.starts_with("uid="))
+                        .map(|f| &f[4..]);
+                    let mut uid: String = String::from("uid not found");
+                    if Some(uid_option).is_some() {
+                        uid = uid_option.unwrap().to_string();
+                    }
+                    auditd_exec.uid = uid;
                 },
                 &_ => {
                     continue;
@@ -198,15 +220,7 @@ fn auditd_log_organize(logs_in_vector: Vec<String>) -> AuditdLogType {
         }
         auditd = Some(AuditdLogType::Execution(auditd_exec));
     }
-    match auditd {
-        Some(auditd) => {
-            return auditd;
-        },
-        None => {
-            eprintln!("Auditd log type not supported or error with the organizing process !");
-            AuditdLogType::Execution(AuditdExecutionLog::default())
-        },
-    }
+    auditd
 }
 
 pub async fn watcher(
@@ -239,6 +253,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use std::time::Instant;
+    use tokio::sync::mpsc;
 
     fn make_map() -> Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>> {
         Arc::new(Mutex::new(HashMap::new()))

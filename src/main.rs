@@ -58,9 +58,11 @@ async fn main() {
     });
 
     while let Some(logs) = rx_logs.recv().await {
-        let insert_result = insert_in_db(logs);
-        if insert_result != Ok(()) {
-            println!("Error with insertion of : {:?}", insert_result);
+        if log.content != ServiceLogType::NotSupported(()) {
+            let insert_result = insert_in_db(logs);
+            if insert_result != Ok(()) {
+                println!("Error with insertion of : {:?}", insert_result);
+            }
         }
     }
 }
