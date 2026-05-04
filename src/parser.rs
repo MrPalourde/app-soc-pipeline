@@ -259,6 +259,22 @@ mod tests {
         Arc::new(Mutex::new(HashMap::new()))
     }
 
+    fn make_base_log(service: &str) -> Vec<String> {
+        vec![
+            "192.168.1.60".to_string(),
+            "1700000000".to_string(),
+            "<174>Apr".to_string(),
+            "29".to_string(),
+            "16:50:22".to_string(),
+            "raspberrypi".to_string(),
+            service.to_string(),
+            "type=EXECVE".to_string(),
+            "msg=audit(1777474222.322:1408665):".to_string(),
+            "argc=1".to_string(),
+            "a0=\"sh\"".to_string()
+        ]
+    }
+
     // -------------------------------------------------------------------------
     // parse()
     // -------------------------------------------------------------------------
@@ -395,7 +411,28 @@ mod tests {
     // organize()
     // -------------------------------------------------------------------------
 
+    #[test]
+    fn test_organize_unknown_service_returns_not_supported() {
+        let tokens = make_base_log("serviceunknow:");
+        let log = organize((tokens, Instant::now()));
 
+        assert_eq!(log.ip, "192.168.1.60");
+        assert_eq!(log.timestamp, 1700000000);
+        assert_eq!(log.hostname, "raspberrypi");
+        assert_eq!(log.service, "serviceunknow:");
+        assert_eq!(log.content, ServiceLogType::NotSupported(()));
+    }
 
+    #[test]
+    fn test_organize_known_service_returns_something() {
+        let tokens = make_base_log("auditd:");
+        let log = organize((tokens, Instant::now()));
+
+        assert_eq!(log.ip, "192.168.1.60");
+        assert_eq!(log.timestamp, 1700000000);
+        assert_eq!(log.hostname, "raspberrypi");
+        assert_eq!(log.service, "auditd:");
+        assert_ne!(log.content, ServiceLogType::NotSupported(()));
+    }
 
 }
