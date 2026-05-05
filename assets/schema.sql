@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS events(
   service TEXT
 );
 
-
 CREATE TABLE IF NOT EXISTS auditd_execution(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id INTEGER,
@@ -23,5 +22,15 @@ CREATE TABLE IF NOT EXISTS auditd_execution(
   success BOOLEAN,
   proctitle TEXT,
   uid TEXT,
+  FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS auditd_user_login(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER,
+  address TEXT,
+  exe TEXT,
+  result TEXT,
+  user_id TEXT,
   FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
 );

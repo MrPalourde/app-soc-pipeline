@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Instant;
 use rusqlite::{Connection, Result};
-use crate::types::{AuditdLogType, ServiceLogType, Log};
+use crate::types::*;
 
 mod server;
 mod parser;
@@ -99,6 +99,17 @@ fn insert_in_db(log: Log) -> Result<()> {
                     &auditd.loader, &auditd.owner, &auditd.permissions,
                     &auditd.command, serde_json::to_string(&auditd.args).unwrap(),
                     &auditd.success, &auditd.proctitle, &auditd.uid,
+                ),
+            )?;
+        },
+        ServiceLogType::Auditd(AuditdLogType::UserLogin(auditd)) => {
+            transaction.execute(
+                "INSERT INTO auditd_user_login (
+                    event_id, address, exe, result, user_id
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5)",
+                (
+                    event_id, &auditd.address, &auditd.exe, &auditd.result, &auditd.user_id,
                 ),
             )?;
         },

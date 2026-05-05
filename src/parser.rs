@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::MutexGuard;
 use std::time::Instant;
 use std::time::Duration;
-use crate::types::{AuditdExecutionLog, AuditdLogType, ServiceLogType, Log};
+use crate::types::*;
 
 const IP: usize = 0;
 const TIMESTAMP: usize = 1;
@@ -14,6 +14,10 @@ const SERVICE: usize = 6;
 const AUDITD_CONTENT_INDEX: usize = 3;
 const PATH_PERMISSIONS_INDEX: usize = 4;
 const PATH_OWNER_INDEX: usize = 14;
+const USER_LOGIN_EXE: usize = 6;
+const USER_LOGIN_ADDR: usize = 8;
+const USER_LOGIN_RESULT: usize = 10;
+const USER_LOGIN_ID: usize = 12;
 
 /*
     Function parse return a Vector<String> of 1 or multiple logs with the same ID
@@ -116,7 +120,44 @@ fn auditd_log_organize(logs_in_vector: Vec<String>) -> Option<AuditdLogType> {
    
     let mut auditd: Option<AuditdLogType> = None;
 
-    if is_execution_log {
+    if !is_execution_log {
+        match logs_in_vector[SERVICE+1].as_str() {
+            "type=USER_LOGIN" => {
+                let mut auditd_user_login = AuditdUserLoginLog::default();
+                let user_login_start: usize = SERVICE + AUDITD_CONTENT_INDEX;
+
+                let mut address: String = logs_in_vector[user_login_start + USER_LOGIN_ADDR].clone();
+                address = address[5..address.len()].to_string();
+                auditd_user_login.address = address;
+                let mut exe = logs_in_vector[user_login_start + USER_LOGIN_EXE].clone();
+                exe = exe
+                    .chars()
+                    .as_str()
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&exe)
+                    .to_string();
+                exe = exe[..exe.len()-1].to_string();
+                auditd_user_login.exe = exe;
+                let mut result = logs_in_vector[user_login_start + USER_LOGIN_RESULT].clone();
+                result = result
+                    .chars()
+                    .as_str()
+                    .split('\'')
+                    .next()
+                    .unwrap_or(&result)
+                    .to_string();
+                result = result[4..result.len()].to_string();
+                auditd_user_login.result = result;
+                let mut user_id = logs_in_vector[user_login_start + USER_LOGIN_ID].clone();
+                user_id = user_id[4..user_id.len()-1].to_string();
+                auditd_user_login.user_id = user_id;
+                auditd = Some(AuditdLogType::UserLogin(auditd_user_login));
+            },
+            _ => {}
+        }
+
+    } else {
         let mut auditd_exec = AuditdExecutionLog::default();
 
         for auditd_type_index in auditd_indices {
