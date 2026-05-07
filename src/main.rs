@@ -10,6 +10,7 @@ use crate::types::*;
 
 mod server;
 mod parser;
+mod analyzer;
 mod types;
 
 #[derive(Debug, Deserialize)]
@@ -59,15 +60,17 @@ async fn main() {
 
     while let Some(logs) = rx_logs.recv().await {
         if logs.content != ServiceLogType::NotSupported(()) {
-            let insert_result = insert_in_db(logs);
+            let insert_result = insert_in_db(&logs);
             if insert_result != Ok(()) {
                 println!("Error with insertion of : {:?}", insert_result);
+            } else {
+                analyzer::analyze_log(logs);
             }
         }
     }
 }
 
-fn insert_in_db(log: Log) -> Result<()> {
+fn insert_in_db(log: &Log) -> Result<()> {
     let mut conn = Connection::open("app_database.db")?;
     let transaction = conn.transaction()?;
 
@@ -77,10 +80,10 @@ fn insert_in_db(log: Log) -> Result<()> {
         )
         VALUES (?1, ?2, ?3, ?4)",
         (
-            log.ip,
+            log.ip.clone(),
             log.timestamp,
-            log.hostname,
-            log.service,
+            log.hostname.clone(),
+            log.service.clone(),
         ),
     )?;
 
