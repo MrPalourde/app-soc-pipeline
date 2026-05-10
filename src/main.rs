@@ -27,7 +27,7 @@ struct Server {
 type State = Arc<Mutex<HashMap<String, (Vec<String>, Instant)>>>;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let config_str = fs::read_to_string("config/server.toml").expect("Failed to read file");
     let config: Config = toml::from_str(&config_str).expect("Failed to parse TOML");
 
@@ -58,16 +58,26 @@ async fn main() {
         parser::watcher(watcher_state, tx_logs).await;
     });
 
+    let conn_analyzer = Connection::open_in_memory()?;
+    conn_analyzer.execute(
+        "CREATE TABLE analyze_scores (
+            user_id INTEGER PRIMARY KEY,
+            score INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
     while let Some(logs) = rx_logs.recv().await {
         if logs.content != ServiceLogType::NotSupported(()) {
             let insert_result = insert_in_db(&logs);
             if insert_result != Ok(()) {
                 println!("Error with insertion of : {:?}", insert_result);
             } else {
-                analyzer::analyze_log(logs);
+                analyzer::analyze_log(&conn_analyzer, logs);
             }
         }
     }
+    Ok(())
 }
 
 fn insert_in_db(log: &Log) -> Result<()> {
