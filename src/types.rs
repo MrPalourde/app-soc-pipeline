@@ -35,6 +35,7 @@ pub enum ServiceLogType {
     NotSupported(()),
 }
 
+#[derive(Debug)]
 pub struct Log {
     pub ip: String,
     pub timestamp: i32,

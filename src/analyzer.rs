@@ -11,18 +11,26 @@ pub fn analyze_log(conn: &Connection, log: Log) {
 
     init_score(&conn, user_id);
 
+
     let delta: i16 = {
+        let mut score: f64 = 100.0;
         match &log.content {
             ServiceLogType::Auditd(AuditdLogType::Execution(auditd)) => {
-                match auditd.exe.as_str() {
-                    "sudo" => -5,
-                    _ => 0
+                if auditd.exe.as_str() == "sudo" {
+                    score *= 1.5;
+                }
+                if auditd.cwd.as_str() == "/" {
+                    score *= 1.1;
+                }
+                if auditd.uid.as_str() == "0" {
+                    score *= -1.0;
                 }
             },
-            _ => {0}
+            _ => {}
         }
+        score as i16
     };
-    
+
     conn.execute(
         "INSERT INTO analyze_scores (user_id, score)
          VALUES (?1, ?2)
@@ -30,8 +38,10 @@ pub fn analyze_log(conn: &Connection, log: Log) {
          DO UPDATE SET score = score + excluded.score",
         params![user_id, delta],
     ).unwrap();
-
-    println!("{}", delta);
+    let score = get_score(&conn, user_id);
+    if score > 100 {
+        println!("Log to check with score -{} : {:?}", get_score(&conn, user_id), log);
+    }
 }
 
 fn init_score(conn: &Connection, user_id: i64) {
@@ -41,4 +51,12 @@ fn init_score(conn: &Connection, user_id: i64) {
          ON CONFLICT(user_id) DO NOTHING",
         [user_id],
     ).unwrap();
+}
+
+fn get_score(conn: &Connection, user_id: i64) -> i16 {
+    conn.query_row(
+        "SELECT score FROM analyze_scores WHERE user_id = ?1",
+        [user_id],
+        |row| row.get(0),
+    ).unwrap()
 }
