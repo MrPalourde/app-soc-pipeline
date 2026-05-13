@@ -230,7 +230,7 @@ fn auditd_log_organize(logs_in_vector: Vec<String>) -> Option<AuditdLogType> {
                 },
                 "type=CWD" => {
                     let mut cwd: String = logs_in_vector[auditd_type_index + AUDITD_CONTENT_INDEX].clone();
-                    cwd = (&cwd[5..6]).to_string();
+                    cwd = (&cwd[5..cwd.len() - 1]).to_string();
                     auditd_exec.cwd = cwd;
                 },
                 "type=SYSCALL" => { 
