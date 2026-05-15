@@ -1,4 +1,4 @@
-![Status](https://img.shields.io/badge/status-WIP-orange)
+![Status](https://img.shields.io/badge/status-paused-blue)
 ![Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![DB](https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite)
@@ -9,13 +9,14 @@ Linux Security Operations Center (SOC) log ingestion and analysis pipeline writt
 This project collects system logs from Linux machines via rsyslog, processes them in real time, and stores them in a structured SQLite database to enable efficient querying, security monitoring, and anomaly detection.
 
 ## Status
-Work in progress — v1 in development.  
-Core pipeline functional (TCP ingestion, auditd logs parsing, SQLite storage)
+Project paused — development temporarily on hold.
+Core pipeline functional (TCP ingestion, auditd logs parsing, SQLite storage, basic scoring on logs)
 
 ## Features
 - Log ingestion over TCP (Tokio async)
-- Support for auditd logs (execve, path, cwd, proctitle, syscall)
+- Support for auditd logs (execve, path, cwd, proctitle, syscall, user\_login)
 - SQLite database for structured storage and querying
+- Basic scoring based on logs (do nothing at the moment)
 
 ## How it works
 1. Logs are generated on client machines  
